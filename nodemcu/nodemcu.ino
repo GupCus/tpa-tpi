@@ -10,8 +10,8 @@
 // Pines para comunicación exclusiva con Arduino
 SoftwareSerial arduinoSerial(D1, D2);
 
-const char* ssid = "hashana 2.4";
-const char* password = "hashana2020";
+const char* ssid = "HITRON-9C90";
+const char* password = "RESUWH3NXY9B  ";
 
 const char* mqttServer = "thingsboard.cloud";
 const int mqttPort = 1883;

@@ -8,8 +8,8 @@ const byte ledPin = 9;
 const byte ldrPin = A0;
 
 // --- Parámetros del Controlador PI ---
-float Kp = 0.08;
-float Ki = 0.8;
+float Kp = 0.04;
+float Ki = 0.55;
 const float Ts = 0.02;   // Tiempo de muestreo constante: 20 ms
 
 // --- Variables de Estado del Sistema ---
@@ -78,8 +78,8 @@ void procesarComandosRPC()
                 else if (metodo == "setPWM" && modoControl == "MANUAL")       uAccion = parametro.toInt(); 
                 else if (metodo == "simularEscalon")       uAccion = 255; 
                 else if (metodo == "reset"){
-                    Kp = 0.08;
-                    Ki = 0.8;
+                    Kp = 0.04;
+                    Ki = 0.55;
                 }
                 
                 // Responder confirmación limpia al NodeMCU
