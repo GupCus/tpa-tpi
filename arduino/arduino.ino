@@ -1,6 +1,6 @@
 // ===================================================
 // TP IoT - Control PI LED - LDR (Sincronizado con NodeMCU)
-// Sistema Optimizado y Modularizado
+// Sistema Modularizado - Control Exclusivo desde ThingsBoard
 // ===================================================
 
 // --- Configuración de Pines ---
@@ -14,15 +14,14 @@ const float Ts = 0.02;   // Tiempo de muestreo constante: 20 ms
 
 // --- Variables de Estado del Sistema ---
 float integral = 255.0 / Ki; // Pre-carga para arranque suave al 100%
-int setpoint = 1000;
+int setpoint = 600;          // Setpoint inicial, modificable por RPC
 String modoControl = "AUTO";
 
 // --- Temporizadores asíncronos ---
 unsigned long lastControlTime = 0;
 unsigned long lastLogTime = 0;
-unsigned long startTime;
 
-// --- Variables Globales de Control (para compartir entre módulos) ---
+// --- Variables Globales de Control ---
 int yCrudo = 0;
 float uAccion = 0.0;
 float errorActual = 0.0;
@@ -31,31 +30,22 @@ void setup()
 {
     Serial.begin(9600);
     
-    // Optimización crítica para evitar retrasos en el lazo PI de 20ms
-    Serial.setTimeout(2); 
-
     pinMode(ledPin, OUTPUT);
-    analogWrite(ledPin, 255); // Encendido físico inicial
-
-    startTime = millis();
+    analogWrite(ledPin, 255); // Encendido físico inicial al 100%
 }
 
 void loop() 
 {
-    // 1. Escuchar comandos desde la nube de forma asíncrona
+    // 1. Escuchar comandos RPC desde la nube (Setpoint, Kp, Ki, Modo)
     procesarComandosRPC();
 
-    // 2. Transición automática de referencia (Escalón a los 5 segundos)
-    if (millis() - startTime > 5000 && setpoint == 150 && modoControl == "AUTO") {
-        setpoint = 100;
-    }
-
-    // 3. Tarea ejecutada estrictamente cada Ts (20 ms)
+    // 2. Tarea ejecutada estrictamente cada Ts (20 ms)
     if (millis() - lastControlTime >= 20) {
         lastControlTime = millis();
         ejecutarControlPI();
         
-        // 4. Sub-tarea desacoplada: Envío de telemetría cada 1 segundo
+        
+        // 3. Sub-tarea desacoplada: Envío de telemetría cada 1 segundo
         if (millis() - lastLogTime >= 1000) {
             lastLogTime = millis();
             enviarTelemetriaCSV();
@@ -64,28 +54,43 @@ void loop()
 }
 
 // ===================================================
-// MÓDULO 1: PROCESAMIENTO DE COMANDOS (RPC)
+// MÓDULO 1: PROCESAMIENTO DE COMANDOS (RPC) - ASÍNCRONO
 // ===================================================
 void procesarComandosRPC() 
 {
-    if (Serial.available() > 0) {
-        String comando = Serial.readStringUntil('\n');
-        comando.trim();
+    static String bufferComando = ""; 
+
+    while (Serial.available() > 0) {
+        char c = Serial.read();
         
-        int colonIndex = comando.indexOf(':');
-        if (colonIndex != -1) {
-            String metodo = comando.substring(0, colonIndex);
-            String parametro = comando.substring(colonIndex + 1);
+        if (c == '\n') {
+            bufferComando.trim();
             
-            if (metodo == "setSetpoint")       setpoint = parametro.toInt();
-            else if (metodo == "setKp")        Kp = parametro.toFloat();
-            else if (metodo == "setKi")        Ki = parametro.toFloat();
-            else if (metodo == "setMode")      modoControl = parametro;
-            
-            // Responder confirmación limpia al NodeMCU
-            Serial.print("OK_RES: Comando ");
-            Serial.print(metodo);
-            Serial.println(" ejecutado con exito");
+            int colonIndex = bufferComando.indexOf(':');
+            if (colonIndex != -1) {
+                String metodo = bufferComando.substring(0, colonIndex);
+                String parametro = bufferComando.substring(colonIndex + 1);
+                
+                if (metodo == "setSetpoint")       setpoint = parametro.toInt();
+                else if (metodo == "setKp")        Kp = parametro.toFloat();
+                else if (metodo == "setKi")        Ki = parametro.toFloat();
+                else if (metodo == "setMode")      modoControl = parametro;
+                else if (metodo == "setPWM" && modoControl == "MANUAL")       uAccion = parametro.toInt(); 
+                else if (metodo == "simularEscalon")       uAccion = 255; 
+                else if (metodo == "reset"){
+                    Kp = 0.08;
+                    Ki = 0.8;
+                }
+                
+                // Responder confirmación limpia al NodeMCU
+                Serial.print("OK_RES: Comando ");
+                Serial.print(metodo);
+                Serial.println(" ejecutado con exito");
+            }
+            bufferComando = ""; // Limpiar búfer para el próximo comando
+        } 
+        else if (c != '\r') {
+            bufferComando += c; // Acumular carácter entrante
         }
     }
 }
@@ -101,21 +106,32 @@ void ejecutarControlPI()
     // Cálculo del error del lazo
     errorActual = setpoint - yCrudo;
 
-    // Acción integral acumulada
-    integral += errorActual * Ts;
 
+    if(modoControl != "MANUAL"){
     // Ecuación del controlador PI
-    uAccion = Kp * errorActual + Ki * integral;
+        integral += errorActual * Ts;
+        uAccion = Kp * errorActual + Ki * integral;
 
-    // Algoritmo Anti-Windup (Saturación condicional de la acción de control)
-    if (uAccion > 255) {
-        uAccion = 255;
-        integral -= errorActual * Ts; // Deshace la integración en saturación alta
+    // Algoritmo Anti-Windup (Saturación condicional)
+        if (uAccion > 255) {
+            uAccion = 255;
+            integral -= errorActual * Ts; 
+        }
+        else if (uAccion < 0) {
+            uAccion = 0;
+            integral -= errorActual * Ts; 
+        }
+    } else {
+       // Para evitar excesos manuales
+        if (uAccion > 255) {
+            uAccion = 255;
+        }
+        else if (uAccion < 0) {
+            uAccion = 0;
+        }
     }
-    else if (uAccion < 0) {
-        uAccion = 0;
-        integral -= errorActual * Ts; // Deshace la integración en saturación baja
-    }
+
+
 
     // Escritura en el actuador (PWM)
     analogWrite(ledPin, (int)uAccion);
