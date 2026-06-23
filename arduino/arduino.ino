@@ -12,6 +12,7 @@
 const byte ledPin = 9;
 const byte ldrPin = A0;
 
+
 // Parámetros base
 float Kp = 0.08;
 float Ki = 0.8;
@@ -77,8 +78,8 @@ void procesarComandosRPC()
                 else if (metodo == "setPWM" && modoControl == "MANUAL")       uAccion = parametro.toInt(); 
                 else if (metodo == "simularEscalon")       uAccion = 255; 
                 else if (metodo == "reset"){
-                    Kp = 0.08;
-                    Ki = 0.8;
+                    Kp = 0.04;
+                    Ki = 0.55;
                 }
                 
                 // Responder confirmación limpia al NodeMCU, aunque te confirma para todo metodo sin funcionamiento

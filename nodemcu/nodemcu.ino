@@ -17,8 +17,10 @@
 // Teniamos conflicto con la comunicación del arduino, tuvimos que especificar otros dos puertos
 SoftwareSerial arduinoSerial(D1, D2);
 
+
 const char* ssid = " wifi ";
 const char* password = " contrasena ";
+
 
 const char* mqttServer = "thingsboard.cloud";
 const int mqttPort = 1883;
