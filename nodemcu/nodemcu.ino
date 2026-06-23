@@ -1,5 +1,12 @@
 // ===================================================
-//   NODEMCU - PUENTE SERIAL-WIFI PARA THINGSBOARD
+// NODEMCU - solo hace de puente entre thingsboard y arduino
+// TP IoT - Control PI LED - UTN FRRO ISI 4K01
+// Agustín Barroso Bollero - 52818
+// Victoria Caracchi - 53482
+// Lautaro Ponce - 52898
+// Tomás Ramos - 52216
+// Irina Repupilli - 52417
+// Enrico Reschini - 52973
 // ===================================================
 
 #include <ESP8266WiFi.h>
@@ -7,11 +14,11 @@
 #include <ArduinoJson.h>
 #include <SoftwareSerial.h>
 
-// Pines para comunicación exclusiva con Arduino
+// Teniamos conflicto con la comunicación del arduino, tuvimos que especificar otros dos puertos
 SoftwareSerial arduinoSerial(D1, D2);
 
-const char* ssid = "hashana 2.4";
-const char* password = "hashana2020";
+const char* ssid = " wifi ";
+const char* password = " contrasena ";
 
 const char* mqttServer = "thingsboard.cloud";
 const int mqttPort = 1883;
@@ -69,48 +76,49 @@ void sendTelemetry(String data) {
   
   String values[11];
   
-  // Procesamos las primeras 10 columnas buscando las comas
+  // Procesamos lo recibido
   for (int i = 0; i < 11; i++) {
-    int commaIndex = data.indexOf(',');
+    int coma = data.indexOf(',');
     
-    if (commaIndex == -1) {
-      // Si ya no hay más comas, este es el último dato (el modo de control)
+    if (coma == -1) {
+      // Si ya no hay más comas, este es el último dato
       values[i] = data;
       values[i].trim();
       break;
     }
     
-    // Extraemos desde el principio (0) hasta la posición de la coma
-    values[i] = data.substring(0, commaIndex);
+    // Extraemos hasta la posición de la coma
+    values[i] = data.substring(0, coma);
     values[i].trim();
     
-    // Descartamos el pedazo que ya guardamos y nos quedamos con el resto
-    data = data.substring(commaIndex + 1);
+    // Descartamos lo que ya guardamos y nos quedamos con el resto
+    data = data.substring(coma + 1);
   }
   
-  // Armamos el JSON con los datos perfectamente indexados
+  // Armamos el JSON con los datos
   StaticJsonDocument<256> doc;
-  doc["y"] = values[0].toInt();             // Iluminación (ADC) -> 223
-  doc["y_percent"] = values[1].toFloat();   // Iluminación (%) -> 21.80
-  doc["r"] = values[2].toInt();             // Setpoint (ADC) -> 220
-  doc["r_percent"] = values[3].toFloat();   // Setpoint (%) -> 21.51
-  doc["u"] = values[4].toInt();             // PWM Bruto -> 0
-  doc["u_percent"] = values[5].toFloat();   // PWM Aplicado -> 0.28
-  doc["kp"] = values[6].toFloat();          // KP Actual -> 0.0800
-  doc["ki"] = values[7].toFloat();          // KI Actual -> 0.8000
-  doc["e"] = values[8].toFloat();           // Error -> -3.00
-  doc["e_percent"] = values[9].toFloat();   // Error (%) -> -0.29
-  doc["mode"] = values[10];                 // Modo de control -> AUTO
+  doc["y"] = values[0].toInt();             // Iluminación (ui) 
+  doc["y_percent"] = values[1].toFloat();   // Iluminación (%) 
+  doc["r"] = values[2].toInt();             // Setpoint (ui) 
+  doc["r_percent"] = values[3].toFloat();   // Setpoint (%) 
+  doc["u"] = values[4].toInt();             // PWM Bruto 
+  doc["u_percent"] = values[5].toFloat();   // PWM Aplicado 
+  doc["kp"] = values[6].toFloat();          // KP Actual 
+  doc["ki"] = values[7].toFloat();          // KI Actual 
+  doc["e"] = values[8].toFloat();           // Error
+  doc["e_percent"] = values[9].toFloat();   // Error (%) 
+  doc["mode"] = values[10];                 // Modo de control
   
+  //junta todo y lo envía a tb
   char jsonBuffer[256];
   serializeJson(doc, jsonBuffer);
-  
   if (client.publish("v1/devices/me/telemetry", jsonBuffer)) {
     Serial.print("[DATOS ENVIADOS A THINGSBOARD]: ");
     Serial.println(jsonBuffer);
   }
 }
 
+//metodo para agarrar lo que manda tb y pasarlo al arduino
 void callback(char* topic, byte* payload, unsigned int length) {
   String message;
   for (int i = 0; i < length; i++) {
@@ -140,6 +148,7 @@ void callback(char* topic, byte* payload, unsigned int length) {
   Serial.println(comando);
 }
 
+//metodo para la conexion, cuando se conecta envía una señal de vida
 void reconnect() {
   while (!client.connected()) {
     Serial.print("Intentando conexión MQTT...");
@@ -155,7 +164,6 @@ void reconnect() {
       if (client.publish("v1/devices/me/telemetry", aliveBuffer)) {
         Serial.println("[STATUS] -> Mensaje de vida enviado: 'alive': true");
       }
-      // ------------------------------------
 
       client.subscribe("v1/devices/me/rpc/request/+");
     } else {
@@ -175,7 +183,7 @@ void setup() {
   client.setServer(mqttServer, mqttPort);
   client.setCallback(callback);
   
-  Serial.println("[STATUS] -> PUENTE LISTO Y OPERATIVO");
+  Serial.println("[STATUS] -> PUENTE LISTO");
   Serial.println("----------------------------------------------");
 }
 
@@ -199,12 +207,12 @@ void loop() {
         Serial.print("  -> info: El Arduino confirmo la ejecucion de un comando.\n");
       } 
       else {
-        int commaCount = 0;
+        int comaCount = 0;
         for (int i = 0; i < arduinoData.length(); i++) {
-          if (arduinoData[i] == ',') commaCount++;
+          if (arduinoData[i] == ',') comaCount++;
         }
         
-        if (commaCount == 10) {
+        if (comaCount == 10) {
           sendTelemetry(arduinoData);
         } 
         else if (arduinoData.length() > 0 && !arduinoData.startsWith("===") && !arduinoData.startsWith("STATUS")) {
